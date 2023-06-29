@@ -285,17 +285,86 @@ module.public = {
             end
         end
 
-        return tangles
+        local treesitter = neorg.modules.get_module("core.integrations.treesitter")
+
+        local function code_block_search(node, found)
+          found = found or {}
+          if (vim.startswith(node:type(), "heading")) then
+            local next = node:named_child(0)
+            if next ~= nil and vim.startswith(treesitter.get_node_text(next), "#tangle.ref ") then
+              goto continue
+            end
+          end
+          if (node:type() == "ranged_verbatim_tag") then
+            table.insert(found, node)
+          else
+            for child, _ in node:iter_children() do
+              code_block_search(child, found)
+            end
+          end
+          ::continue::
+          return found
+        end
+
+        local query_str = [[
+        (_
+          (strong_carryover_set
+            (strong_carryover
+              name: (tag_name) @_strong_carryover_tag_name
+              (#eq? @_strong_carryover_tag_name "tangle.ref")
+              (tag_parameters
+                .
+                (tag_param) @_ref_name)) @tag)) @ref
+        ]]
+
+        local query = neorg.utils.ts_parse_query("norg", query_str)
+        local refs = {}
+        local content = {}
+
+        for id, node in query:iter_captures(document_root, buffer, 0, -1) do
+          local ref = nil
+
+          if (query.captures[id] == "tag") then
+            local info = treesitter.get_tag_info(node)
+            refs[info.parameters[1]] = content
+            content = {}
+          end
+
+          if vim.startswith(node:type(), "heading") then
+            local nodes = {}
+            for child, _ in node:iter_children() do
+              vim.list_extend(nodes, code_block_search(child))
+            end
+            for _, node in pairs(nodes) do
+              local info = treesitter.get_tag_info(node)
+              vim.list_extend(content, info.content)
+            end
+          end
+        end
+
+        return tangles, refs
     end,
 }
 
 module.on_event = function(event)
     if event.type == "core.neorgcmd.events.core.tangle.current-file" then
-        local tangles = module.public.tangle(event.buffer)
+        local tangles, refs = module.public.tangle(event.buffer)
 
         if not tangles or vim.tbl_isempty(tangles) then
             neorg.utils.notify("Nothing to tangle!", vim.log.levels.WARN)
             return
+        end
+
+        local function find_next_ref(text)
+          local first, last = text:find("[^\n]*(<<[%w%-]+>>)")
+
+          if first then
+            local match = text:sub(first, last)
+            local ref = match:match("<<([%w%-]+)>>")
+            local indentation = match:match("^(.*)<<")
+
+            return ref, string.rep(" ", indentation:len())
+          end
         end
 
         local file_count = vim.tbl_count(tangles)
@@ -305,8 +374,16 @@ module.on_event = function(event)
             vim.loop.fs_open(vim.fn.expand(file), "w", 438, function(err, fd)
                 file_count = file_count - 1
                 assert(not err, neorg.lib.lazy_string_concat("Failed to open file '", file, "' for tangling: ", err))
+                local text = table.concat(content, "\n")
 
-                vim.loop.fs_write(fd, table.concat(content, "\n"), 0, function(werr)
+                while true do
+                  local ref, indentation = find_next_ref(text)
+                  if not ref then break end
+                  text = text:gsub("<<" .. ref:gsub("%-", "%%-") .. ">>", table.concat(refs[ref], "\n" .. indentation))
+                  refs[ref] = nil
+                end
+
+                vim.loop.fs_write(fd, text, 0, function(werr)
                     assert(
                         not werr,
                         neorg.lib.lazy_string_concat("Failed to write to file '", file, "' for tangling: ", werr)
