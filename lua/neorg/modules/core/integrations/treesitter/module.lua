@@ -119,7 +119,7 @@ module.config.public = {
         norg = {
             url = "https://github.com/sioonhho/tree-sitter-norg",
             files = { "src/parser.c", "src/scanner.cc" },
-            branch = "tag-param-with-special-chars",
+            revision = "tag-param-with-special-chars",
         },
         -- Configuration for the metadata parser (used to parse the contents
         -- of `@document.meta` blocks).
