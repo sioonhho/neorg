@@ -117,10 +117,9 @@ module.config.public = {
     parser_configs = {
         -- Configuration for the mainline norg parser.
         norg = {
-            url = "https://github.com/nvim-neorg/tree-sitter-norg",
+            url = "https://github.com/sioonhho/tree-sitter-norg",
             files = { "src/parser.c", "src/scanner.cc" },
-            branch = "main",
-            revision = "6348056b999f06c2c7f43bb0a5aa7cfde5302712",
+            branch = "tag-param-with-special-chars",
         },
         -- Configuration for the metadata parser (used to parse the contents
         -- of `@document.meta` blocks).
