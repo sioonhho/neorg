@@ -527,11 +527,13 @@ module.public = {
 
         render_code_block = function(config, bufid, node)
             local tag_name = vim.treesitter.get_node_text(node:named_child(0), bufid)
-            if not (tag_name == "code" or tag_name == "embed") then
+            local tangled = vim.startswith(tag_name, "#tangle")
+            if not (tangled or tag_name == "code" or tag_name == "embed") then
                 return
             end
 
             local row_start_0b, col_start_0b, row_end_0bin = node:range()
+            if tangled then row_start_0b = row_start_0b + 1 end
             assert(row_start_0b < row_end_0bin)
             local conceal_on = (vim.wo.conceallevel >= 2) and config.conceal
 
